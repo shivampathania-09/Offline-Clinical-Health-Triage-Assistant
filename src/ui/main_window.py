@@ -1,19 +1,19 @@
 import sys
 import os
 from pathlib import Path
+import time
+import json
+import psutil
+import threading
+from typing import Optional, Dict, Any, List
 
-# Add project root directory to sys.path so direct execution works from any cwd
+# Add project root directory to sys.path so direct execution works from any working directory
 project_root = Path(__file__).resolve().parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-import time
-import json
-import psutil
-from typing import Optional, Dict, Any, List
-
 from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot
-from PySide6.QtGui import QFont, QColor, QIcon, QPainter, QPalette
+from PySide6.QtGui import QFont, QColor
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -25,10 +25,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
-    QFrame,
-    QProgressBar,
-    QSizePolicy,
-    QGraphicsDropShadowEffect
+    QFrame
 )
 
 from src.core.safety_engine import SafetyEngine, SafetyOverrideResult
@@ -71,7 +68,7 @@ def local_offline_llm_inference(system_prompt: str, context: str) -> str:
     # Multi-turn conversational flow
     turn_count = context.count("user:")
     
-    if turn_count == 1:
+    if turn_count <= 1:
         # Turn 1: Inquire for clinical duration & details
         if is_hindi:
             return json.dumps({
@@ -139,70 +136,87 @@ def local_offline_llm_inference(system_prompt: str, context: str) -> str:
 class TriageWorker(QObject):
     """
     Dedicated worker running in a separate QThread.
-    STRICT THREADING GUARDRAIL: Never accesses or modifies UI widgets.
-    All outputs are emitted exclusively through Qt Signals.
+    STRICT THREADING GUARDRAIL: Never accesses, modifies, or instantiates UI widgets.
+    All communication with the GUI thread occurs strictly via Qt Signals.
+    Guaranteed input unlocking via finished signal emitted in finally block.
     """
-    signal_processing_state = Signal(bool)     # True when working, False when idle
-    signal_user_posted = Signal(str)           # Relays clean user query to UI
-    signal_turn_completed = Signal(dict)       # Emits serialized TurnResult
-    signal_telemetry_updated = Signal(dict)    # Emits real-time metrics
-    signal_error = Signal(str)                 # Emits runtime error string
+    user_posted = Signal(str)           # Relays user input string to main thread
+    turn_completed = Signal(dict)       # Emits serialized TurnResult to main thread
+    telemetry_updated = Signal(dict)    # Emits real-time metrics to main thread
+    error_occurred = Signal(str)        # Emits user-facing error message on failure
+    finished = Signal()                 # ALWAYS emitted in finally block to unlock UI
 
     def __init__(self, session_manager: TriageSessionManager):
         super().__init__()
         self.session_manager = session_manager
-        self.npu_accelerated: bool = False  # Controlled by hardware toggle
+        self.npu_accelerated: bool = False  # Controlled by hardware runtime toggle
 
     @Slot(str, bool)
     def process_query(self, user_text: str, is_audio: bool = False):
-        """Processes a single triage query safely in worker thread."""
+        """Processes a single triage query safely inside the worker thread."""
         try:
-            self.signal_processing_state.emit(True)
+            # 1. Post clean user input to chat on main thread
+            self.user_posted.emit(user_text)
 
-            # 1. Measure ASR Processing Time (Simulated on-device Whisper inference)
-            asr_latency_ms = 0.0
-            if is_audio:
-                t0_asr = time.perf_counter()
-                time.sleep(0.08 if self.npu_accelerated else 0.18)
-                asr_latency_ms = (time.perf_counter() - t0_asr) * 1000.0
+            # 2. Start continuous CPU load sampling loop (every ~100ms) during active execution window
+            stop_cpu_monitor = threading.Event()
+            cpu_readings: List[float] = []
 
-            # Post user input to UI
-            self.signal_user_posted.emit(user_text)
+            def _sample_cpu_loop():
+                while not stop_cpu_monitor.is_set():
+                    try:
+                        usage = psutil.cpu_percent(interval=0.1)
+                        cpu_readings.append(usage)
+                    except Exception:
+                        break
 
-            # 2. Measure CPU load baseline
-            cpu_samples = [psutil.cpu_percent(interval=0.04)]
+            cpu_monitor_thread = threading.Thread(target=_sample_cpu_loop, daemon=True)
+            cpu_monitor_thread.start()
 
-            # 3. Time-to-First-Token (TTFT) and Token Speed timing
-            t0_gen = time.perf_counter()
-            time.sleep(0.035 if self.npu_accelerated else 0.16)  # TTFT delay
-            ttft_ms = (time.perf_counter() - t0_gen) * 1000.0
+            try:
+                # 3. Measure ASR Processing Time (Simulated on-device Whisper inference)
+                asr_latency_ms = 0.0
+                if is_audio:
+                    t0_asr = time.perf_counter()
+                    time.sleep(0.08 if self.npu_accelerated else 0.18)
+                    asr_latency_ms = (time.perf_counter() - t0_asr) * 1000.0
 
-            # 4. Execute Core Triage Session Turn
-            turn_result: TurnResult = self.session_manager.process_turn(
-                user_text,
-                llm_call_fn=local_offline_llm_inference
-            )
+                # 4. Measure Time-To-First-Token (TTFT)
+                t0_gen = time.perf_counter()
+                time.sleep(0.035 if self.npu_accelerated else 0.16)
+                ttft_ms = (time.perf_counter() - t0_gen) * 1000.0
 
-            # Sample CPU load during generation
-            cpu_samples.append(psutil.cpu_percent(interval=0.04))
-            total_gen_time = max(time.perf_counter() - t0_gen, 0.001)
+                # 5. Execute Core Triage Session Turn
+                turn_result: TurnResult = self.session_manager.process_turn(
+                    user_text,
+                    llm_call_fn=local_offline_llm_inference
+                )
 
-            # Approximate token count from response
-            resp_text = (
-                turn_result.triage_response.recommended_action + " " +
-                " ".join(turn_result.triage_response.home_care_steps)
-            )
-            estimated_tokens = max(len(resp_text.split()) * 1.3, 12.0)
-            tokens_per_sec = estimated_tokens / total_gen_time
+                total_gen_time = max(time.perf_counter() - t0_gen, 0.001)
 
+                # 6. Calculate Token Generation Speed
+                resp_text = (
+                    turn_result.triage_response.recommended_action + " " +
+                    " ".join(turn_result.triage_response.home_care_steps)
+                )
+                estimated_tokens = max(len(resp_text.split()) * 1.3, 12.0)
+                tokens_per_sec = estimated_tokens / total_gen_time
+
+                if self.npu_accelerated:
+                    tokens_per_sec = max(tokens_per_sec, 38.5)
+                else:
+                    tokens_per_sec = min(tokens_per_sec, 19.2)
+
+            finally:
+                # Stop continuous CPU sampling loop and gather maximum recorded value
+                stop_cpu_monitor.set()
+                cpu_monitor_thread.join(timeout=0.3)
+
+            peak_cpu = max(cpu_readings) if cpu_readings else psutil.cpu_percent(interval=0.05)
             if self.npu_accelerated:
-                tokens_per_sec = max(tokens_per_sec, 38.5)
-                peak_cpu = min(max(cpu_samples), 14.8)
-            else:
-                tokens_per_sec = min(tokens_per_sec, 19.2)
-                peak_cpu = max(cpu_samples)
+                peak_cpu = min(peak_cpu, 14.8)
 
-            # Telemetry packet
+            # 7. Package Real-Time On-Device Telemetry
             telemetry_data = {
                 "asr_ms": round(asr_latency_ms, 1),
                 "ttft_ms": round(ttft_ms, 1),
@@ -215,7 +229,7 @@ class TriageWorker(QObject):
                 "is_completed": turn_result.is_completed
             }
 
-            # Serialize turn result for thread safety
+            # 8. Serialize Turn Result for thread safety
             serialized_result = {
                 "current_turn": turn_result.current_turn,
                 "detected_language": turn_result.detected_language,
@@ -230,20 +244,20 @@ class TriageWorker(QObject):
                 "matched_symptom": turn_result.safety_override.matched_symptom if turn_result.safety_override else None
             }
 
-            self.signal_telemetry_updated.emit(telemetry_data)
-            self.signal_turn_completed.emit(serialized_result)
+            self.telemetry_updated.emit(telemetry_data)
+            self.turn_completed.emit(serialized_result)
 
         except Exception as exc:
-            self.signal_error.emit(str(exc))
+            self.error_occurred.emit(f"Processing failed — please try again ({str(exc)})")
         finally:
-            self.signal_processing_state.emit(False)
+            # STRICT GUARDRAIL: ALWAYS emit finished to unlock input controls
+            self.finished.emit()
 
 
 # ==============================================================================
 # 3. MODERN DESKTOP UI (MAIN WINDOW)
 # ==============================================================================
 class MainWindow(QMainWindow):
-    # Signal dispatched to worker thread
     request_triage = Signal(str, bool)
 
     def __init__(self):
@@ -262,11 +276,11 @@ class MainWindow(QMainWindow):
         self.session_manager = TriageSessionManager(max_turns=3)
         self._init_worker_thread()
 
-        # 3. Setup Polished Visual Styling & Layouts
+        # 3. Setup Global Stylesheet Theme and Layout
         self._apply_global_theme()
         self._build_ui_layout()
 
-        # Initial telemetry state
+        # 4. Set Initial Baseline Telemetry State
         self._update_telemetry_display({
             "asr_ms": 0.0,
             "ttft_ms": 0.0,
@@ -279,20 +293,20 @@ class MainWindow(QMainWindow):
         })
 
     def _init_worker_thread(self):
-        """Initializes non-blocking QThread with signal-slot wiring."""
+        """Initializes non-blocking QThread with signal-slot connections."""
         self.worker_thread = QThread()
         self.worker = TriageWorker(self.session_manager)
         self.worker.moveToThread(self.worker_thread)
 
-        # Connect GUI triggers to Worker slots
+        # Connect GUI dispatch signal to Worker slot
         self.request_triage.connect(self.worker.process_query)
 
-        # Connect Worker signals exclusively to GUI slots
-        self.worker.signal_processing_state.connect(self.on_processing_state_changed)
-        self.worker.signal_user_posted.connect(self.add_user_message_bubble)
-        self.worker.signal_turn_completed.connect(self.add_assistant_triage_card)
-        self.worker.signal_telemetry_updated.connect(self._update_telemetry_display)
-        self.worker.signal_error.connect(self.on_worker_error)
+        # Connect Worker signals exclusively to GUI slots on main thread
+        self.worker.user_posted.connect(self.add_user_message_bubble)
+        self.worker.turn_completed.connect(self.add_assistant_triage_card)
+        self.worker.telemetry_updated.connect(self._update_telemetry_display)
+        self.worker.error_occurred.connect(self.on_worker_error)
+        self.worker.finished.connect(self.unlock_all_controls)
 
         self.worker_thread.start()
 
@@ -398,6 +412,11 @@ class MainWindow(QMainWindow):
                 background-color: #334155;
                 color: #F8FAFC;
             }
+            QPushButton#NewSessionBtn:disabled {
+                background-color: transparent;
+                color: #475569;
+                border-color: #334155;
+            }
             QPushButton#HwToggleBtn {
                 background-color: transparent;
                 color: #94A3B8;
@@ -413,7 +432,7 @@ class MainWindow(QMainWindow):
         """)
 
     def _build_ui_layout(self):
-        """Constructs main layout with Top Banner, Split View, and Sticky Footer."""
+        """Constructs Top Banner, Split View (Left: Dialogue, Right: Telemetry), and Sticky Footer."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_vbox = QVBoxLayout(central_widget)
@@ -424,7 +443,7 @@ class MainWindow(QMainWindow):
         header = self._create_header_bar()
         main_vbox.addWidget(header)
 
-        # 2. Main Content Split View (Dialogue Left, Telemetry Right)
+        # 2. Main Content Split View
         body_widget = QWidget()
         body_layout = QHBoxLayout(body_widget)
         body_layout.setContentsMargins(16, 16, 16, 16)
@@ -481,14 +500,14 @@ class MainWindow(QMainWindow):
         self._set_hardware_mode(is_npu=False)  # Defaults to clean CPU emulation mode
         header_layout.addWidget(self.hw_badge)
 
-        # Hardware Simulator Toggle Button (allows evaluating NPU vs CPU mode)
+        # Hardware Simulator Toggle Button
         self.hw_toggle_btn = QPushButton("Toggle NPU Mode")
         self.hw_toggle_btn.setObjectName("HwToggleBtn")
         self.hw_toggle_btn.setCursor(Qt.PointingHandCursor)
         self.hw_toggle_btn.clicked.connect(self._toggle_hardware_mode)
         header_layout.addWidget(self.hw_toggle_btn)
 
-        # New Session Button
+        # New Session Button (Locked when worker is processing query)
         self.new_session_btn = QPushButton("+ New Session")
         self.new_session_btn.setObjectName("NewSessionBtn")
         self.new_session_btn.setCursor(Qt.PointingHandCursor)
@@ -512,7 +531,7 @@ class MainWindow(QMainWindow):
                 font-weight: 600;
             """)
         else:
-            self.hw_badge.setText("● CPU Emulation Mode (Dev Baseline)")
+            self.hw_badge.setText("● CPU Emulation Mode")
             self.hw_badge.setStyleSheet("""
                 background-color: #451A03;
                 color: #FBBF24;
@@ -573,7 +592,7 @@ class MainWindow(QMainWindow):
         self.status_label.setStyleSheet("color: #64748B; font-size: 11px; font-style: italic;")
         layout.addWidget(self.status_label)
 
-        # Input Area (Input Control Locking targets)
+        # Input Area (Controls locked during query processing)
         input_box = QHBoxLayout()
         input_box.setSpacing(8)
 
@@ -614,9 +633,9 @@ class MainWindow(QMainWindow):
 
         # Metric Cards Layout
         self.card_asr = self._create_metric_card("ASR Processing Time", "0.0 ms", "Whisper Small Quantized")
-        self.card_ttft = self._create_metric_card("Time-To-First-Token (TTFT)", "0.0 ms", "On-Device Latency")
+        self.card_ttft = self._create_metric_card("LLM Time-To-First-Token (TTFT)", "0.0 ms", "On-Device Latency")
         self.card_speed = self._create_metric_card("Token Generation Speed", "0.0 tok/sec", "Inference Throughput")
-        self.card_cpu = self._create_metric_card("Peak CPU Load", "0.0 %", "psutil interval (0.05s)")
+        self.card_cpu = self._create_metric_card("Peak CPU Load", "0.0 %", "psutil interval (0.1s continuous loop)")
         self.card_privacy = self._create_metric_card("Privacy & Isolation Status", "100% Local (0 Bytes Egressed)", "Zero Remote Telemetry")
 
         layout.addWidget(self.card_asr)
@@ -686,7 +705,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(20, 10, 20, 10)
 
         disclaimer = QLabel(
-            "⚠️ Notice: This tool provides initial clinical triage guidance only and does not constitute "
+            "Notice: This tool provides initial clinical triage guidance only and does not constitute "
             "a medical diagnosis. In case of emergency, call 112 immediately."
         )
         disclaimer.setStyleSheet("color: #F59E0B; font-size: 11.5px; font-weight: 500;")
@@ -698,23 +717,31 @@ class MainWindow(QMainWindow):
     # ==========================================================================
     # INPUT CONTROL LOCKING & THREAD COORDINATION
     # ==========================================================================
-    @Slot(bool)
-    def on_processing_state_changed(self, is_processing: bool):
+    def lock_all_controls(self):
         """
-        INPUT CONTROL LOCKING: Disables input box, send button, and audio button
-        while WorkerThread processes queries to prevent race conditions.
+        INPUT CONTROL LOCKING: Disables text input, send button, audio button,
+        and New Session button when WorkerThread starts processing a query.
         """
-        self.text_input.setEnabled(not is_processing)
-        self.send_btn.setEnabled(not is_processing)
-        self.audio_btn.setEnabled(not is_processing)
+        self.text_input.setEnabled(False)
+        self.send_btn.setEnabled(False)
+        self.audio_btn.setEnabled(False)
+        self.new_session_btn.setEnabled(False)
+        self.status_label.setText("⏳ Evaluating clinical symptoms on local engine...")
+        self.status_label.setStyleSheet("color: #38BDF8; font-size: 11px; font-weight: 500;")
 
-        if is_processing:
-            self.status_label.setText("⏳ Evaluating clinical symptoms on local engine...")
-            self.status_label.setStyleSheet("color: #38BDF8; font-size: 11px; font-weight: 500;")
-        else:
-            self.status_label.setText("Ready for input (English / हिंदी)")
-            self.status_label.setStyleSheet("color: #64748B; font-size: 11px; font-style: italic;")
-            self.text_input.setFocus()
+    @Slot()
+    def unlock_all_controls(self):
+        """
+        Re-enables all inputs and controls upon receiving the finished() signal.
+        Guarantees UI controls are never permanently locked.
+        """
+        self.text_input.setEnabled(True)
+        self.send_btn.setEnabled(True)
+        self.audio_btn.setEnabled(True)
+        self.new_session_btn.setEnabled(True)
+        self.status_label.setText("Ready for input (English / हिंदी)")
+        self.status_label.setStyleSheet("color: #64748B; font-size: 11px; font-style: italic;")
+        self.text_input.setFocus()
 
     @Slot()
     def on_send_text_clicked(self):
@@ -722,6 +749,7 @@ class MainWindow(QMainWindow):
         if not text:
             return
         self.text_input.clear()
+        self.lock_all_controls()
         self.request_triage.emit(text, False)
 
     @Slot()
@@ -734,7 +762,6 @@ class MainWindow(QMainWindow):
         self.audio_btn.setText("🎙️ Hold to Record Audio")
         self.audio_btn.setStyleSheet("")
         
-        # Audio simulation: Alternate English / Hindi realistic clinical symptom audio
         sample_audio_prompts = [
             "मुझे पिछले दो दिनों से तेज बुखार और सिरदर्द है।",
             "I have had a mild persistent cough and sore throat since yesterday.",
@@ -742,6 +769,7 @@ class MainWindow(QMainWindow):
             "Slight abdominal discomfort after meals with mild nausea."
         ]
         chosen_prompt = sample_audio_prompts[self.session_manager.current_turn % len(sample_audio_prompts)]
+        self.lock_all_controls()
         self.request_triage.emit(chosen_prompt, True)
 
     @Slot()
@@ -756,13 +784,18 @@ class MainWindow(QMainWindow):
                 item.widget().deleteLater()
 
         self.turn_indicator.setText("Turn: 0 / 3")
+        self.turn_indicator.setStyleSheet("""
+            background-color: #334155;
+            color: #94A3B8;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 6px;
+        """)
         self.diag_status.setText("Session: Active (Turn 0/3)")
         self.diag_lang.setText("Language: Auto (Ready)")
         self.status_label.setText("New session initialized. Ready for patient input.")
-        self.text_input.setEnabled(True)
-        self.send_btn.setEnabled(True)
-        self.audio_btn.setEnabled(True)
-        self.text_input.setFocus()
+        self.unlock_all_controls()
 
     # ==========================================================================
     # CHAT UI RENDERING SLOTS (MAIN THREAD ONLY)
@@ -804,7 +837,7 @@ class MainWindow(QMainWindow):
         severity = data.get("severity_level", "MILD")
         is_override = data.get("safety_override", False)
 
-        # Badge color mapping: Red (#FF4D4D), Yellow (#FFC107), Green (#4CAF50)
+        # Severity Badges: Red (#FF4D4D), Yellow (#FFC107), Green (#4CAF50)
         if severity == "EMERGENCY" or is_override:
             badge_bg = "#FF4D4D"
             badge_text = "EMERGENCY"
@@ -958,8 +991,9 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def on_worker_error(self, err_msg: str):
-        self.status_label.setText(f"⚠️ Error: {err_msg}")
-        self.status_label.setStyleSheet("color: #EF4444; font-size: 11px;")
+        """Displays user-facing error message upon worker failure."""
+        self.status_label.setText(f"⚠️ {err_msg}")
+        self.status_label.setStyleSheet("color: #EF4444; font-size: 11px; font-weight: 600;")
 
     def closeEvent(self, event):
         """Graceful shutdown of worker thread on window exit."""

@@ -1,5 +1,6 @@
 import os
 import pytest
+from unittest.mock import MagicMock
 
 # Ensure headless execution for testing environments
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
@@ -47,20 +48,42 @@ def test_hardware_status_toggle(window):
     assert window.worker.npu_accelerated is False
 
 
-def test_input_control_locking(window):
-    # When processing is True, inputs must be disabled
-    window.on_processing_state_changed(True)
+def test_input_control_locking_and_unlocking(window):
+    # Lock all controls (text input, send, audio, and New Session button)
+    window.lock_all_controls()
     assert window.text_input.isEnabled() is False
     assert window.send_btn.isEnabled() is False
     assert window.audio_btn.isEnabled() is False
+    assert window.new_session_btn.isEnabled() is False
     assert "Evaluating" in window.status_label.text()
 
-    # When processing is False, inputs must be re-enabled
-    window.on_processing_state_changed(False)
+    # Finished signal unlocks all controls
+    window.unlock_all_controls()
     assert window.text_input.isEnabled() is True
     assert window.send_btn.isEnabled() is True
     assert window.audio_btn.isEnabled() is True
+    assert window.new_session_btn.isEnabled() is True
     assert "Ready" in window.status_label.text()
+
+
+def test_worker_error_handling_and_finished_signal():
+    """Verifies that an error in TriageWorker emits error_occurred and ALWAYS finished."""
+    session_manager = MagicMock()
+    session_manager.process_turn.side_effect = RuntimeError("Simulated device failure")
+
+    worker = TriageWorker(session_manager)
+    
+    error_received = []
+    finished_called = []
+
+    worker.error_occurred.connect(lambda msg: error_received.append(msg))
+    worker.finished.connect(lambda: finished_called.append(True))
+
+    worker.process_query("Test input", False)
+
+    assert len(error_received) == 1
+    assert "Processing failed — please try again" in error_received[0]
+    assert len(finished_called) == 1  # Guaranteed by finally block
 
 
 def test_new_session_resets_dialogue_and_manager(window):
