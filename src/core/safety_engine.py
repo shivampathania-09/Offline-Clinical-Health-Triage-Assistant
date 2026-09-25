@@ -30,30 +30,47 @@ class SafetyEngine:
             "free of", "ruled out", "resolved", "negative for"
         }
 
-    def _is_negated(self, text: str, match_start: int, window_size: int = 5) -> bool:
+    def _is_negated(self, text: str, match_start: int, window_size: int = 5, match_end: Optional[int] = None) -> bool:
         """
-        Checks if any negation term exists in the preceding N tokens using strict
+        Checks if any negation term exists in the preceding or following N tokens using strict
         token and bigram matching to avoid false substring matches (e.g., 'no' in 'nonspecific').
         """
         preceding_text = text[:match_start].lower()
         tokens = re.findall(r'\b\w+\b', preceding_text)
         
         lookback_tokens = tokens[-window_size:] if len(tokens) >= window_size else tokens
-        if not lookback_tokens:
-            return False
+        if lookback_tokens:
+            # Construct exact 2-token phrases (bigrams) for multi-word terms like "ruled out"
+            bigrams = [" ".join(lookback_tokens[i:i+2]) for i in range(len(lookback_tokens) - 1)]
 
-        # Construct exact 2-token phrases (bigrams) for multi-word terms like "ruled out"
-        bigrams = [" ".join(lookback_tokens[i:i+2]) for i in range(len(lookback_tokens) - 1)]
+            for term in self.negation_terms:
+                if " " in term:
+                    if term in bigrams:
+                        return True
+                else:
+                    if term in lookback_tokens:
+                        return True
 
-        for term in self.negation_terms:
-            if " " in term:
-                # Multi-word negation (check against exact bigram matches)
-                if term in bigrams:
-                    return True
-            else:
-                # Single-word negation (check against exact token list)
-                if term in lookback_tokens:
-                    return True
+        # Check following tokens for post-symptom negation (e.g. 'chest pain resolved', 'facial drooping absent')
+        if match_end is not None:
+            following_text = text[match_end:].lower()
+        else:
+            following_text = text[match_start:].lower()
+            tokens_after = re.findall(r'\b\w+\b', following_text)
+            following_text = " ".join(tokens_after[1:]) if len(tokens_after) > 1 else ""
+
+        post_tokens = re.findall(r'\b\w+\b', following_text)
+        lookahead_tokens = post_tokens[:window_size] if len(post_tokens) >= window_size else post_tokens
+        if lookahead_tokens:
+            post_bigrams = [" ".join(lookahead_tokens[i:i+2]) for i in range(len(lookahead_tokens) - 1)]
+
+            for term in self.negation_terms:
+                if " " in term:
+                    if term in post_bigrams:
+                        return True
+                else:
+                    if term in lookahead_tokens:
+                        return True
                     
         return False
 
@@ -67,7 +84,8 @@ class SafetyEngine:
         for pattern in self.emergency_patterns:
             for match in re.finditer(pattern, text_lower):
                 start_pos = match.start()
-                if not self._is_negated(text_lower, start_pos):
+                end_pos = match.end()
+                if not self._is_negated(text_lower, start_pos, match_end=end_pos):
                     return SafetyOverrideResult(
                         recommended_action=(
                             "CRITICAL SAFETY OVERRIDE: Emergency symptoms detected ("
