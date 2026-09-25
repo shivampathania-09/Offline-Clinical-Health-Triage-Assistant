@@ -5,6 +5,7 @@ import psutil
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import argparse
 from typing import List, Dict, Any, Optional, Callable, Tuple
 from dotenv import load_dotenv
 
@@ -27,6 +28,7 @@ class BenchmarkHarness:
         self,
         sample_file: str = "tests/sample_symptoms.json",
         npu_inference_fn: Optional[Callable[[str], float]] = None,
+        num_runs: int = 5,
     ):
         """
         npu_inference_fn: A callable taking a prompt string and returning latency in ms.
@@ -34,7 +36,7 @@ class BenchmarkHarness:
         labels outputs as SIMULATED to avoid false hardware claims.
         """
         self.sample_file = sample_file
-        self.num_runs = 5
+        self.num_runs = num_runs
         self.results: List[Dict[str, Any]] = []
         self.npu_inference_fn = npu_inference_fn
         self.npu_mode = "REAL" if npu_inference_fn else "SIMULATED"
@@ -184,10 +186,25 @@ class BenchmarkHarness:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Offline Clinical Triage Benchmark Harness")
+    parser.add_argument(
+        "--eval-runs",
+        type=int,
+        default=5,
+        help="Number of evaluation runs per prompt (default: 5)"
+    )
+    parser.add_argument(
+        "--sample-file",
+        type=str,
+        default="tests/sample_symptoms.json",
+        help="Path to sample symptoms JSON file (default: tests/sample_symptoms.json)"
+    )
+    args = parser.parse_args()
+
     # Wire the real NPUInferenceSession here when executing on hardware:
     # from src.models.npu_engine import NPUInferenceSession
     # session = NPUInferenceSession(...)
-    # harness = BenchmarkHarness(npu_inference_fn=session.timed_inference)
+    # harness = BenchmarkHarness(npu_inference_fn=session.timed_inference, num_runs=args.eval_runs, sample_file=args.sample_file)
 
-    harness = BenchmarkHarness()  # Fallback to SIMULATED mode until wired
+    harness = BenchmarkHarness(sample_file=args.sample_file, num_runs=args.eval_runs)
     harness.run_benchmark()

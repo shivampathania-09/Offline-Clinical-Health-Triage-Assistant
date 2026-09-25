@@ -8,3 +8,5 @@ venv/
 .coverage
 htmlcov/
 *.log
+.env
+.env*.local
