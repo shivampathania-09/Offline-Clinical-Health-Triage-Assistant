@@ -12,11 +12,15 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-# Optional PyAutoGUI support with automatic native Windows fallback
+import typing
+
+# Optional PyAutoGUI support with dynamic import and automatic native Windows fallback
+pyautogui: typing.Any = None
 try:
-    import pyautogui
+    import importlib
+    pyautogui = importlib.import_module("pyautogui")
     HAS_PYAUTOGUI = True
-except ImportError:
+except Exception:
     HAS_PYAUTOGUI = False
 
 # Native Windows API definitions
@@ -48,20 +52,22 @@ def native_press_enter():
     time.sleep(0.05)
 
 
-def copy_to_clipboard(text: str):
-    """Copies UTF-8 / Devanagari text safely into the Windows clipboard using PySide6."""
+def copy_to_clipboard(text: str) -> None:
+    """Copies UTF-8 / Devanagari text safely into the Windows clipboard using pyperclip."""
     try:
-        from PySide6.QtWidgets import QApplication
-        app = QApplication.instance() or QApplication([])
-        app.clipboard().setText(text)
+        import pyperclip
+        pyperclip.copy(text)
         time.sleep(0.1)
+        return
     except Exception:
-        # Fallback to PowerShell Set-Clipboard
-        subprocess.run(
-            ["powershell", "-NoProfile", "-Command", f"$input | Set-Clipboard"],
-            input=text.encode("utf-8"),
-            check=True
-        )
+        pass
+
+    # Fallback to PowerShell Set-Clipboard
+    subprocess.run(
+        ["powershell", "-NoProfile", "-Command", "$input | Set-Clipboard"],
+        input=text.encode("utf-8"),
+        check=True
+    )
 
 
 def paste_text(text: str):
