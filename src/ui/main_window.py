@@ -518,6 +518,7 @@ class MainWindow(QMainWindow):
         # Hardware Simulator Toggle Button
         self.hw_toggle_btn = QPushButton("Toggle NPU Mode")
         self.hw_toggle_btn.setObjectName("HwToggleBtn")
+        self.hw_toggle_btn.setShortcut("Ctrl+T")
         self.hw_toggle_btn.setCursor(Qt.PointingHandCursor)
         self.hw_toggle_btn.clicked.connect(self._toggle_hardware_mode)
         header_layout.addWidget(self.hw_toggle_btn)
@@ -525,6 +526,7 @@ class MainWindow(QMainWindow):
         # New Session Button (Locked when worker is processing query)
         self.new_session_btn = QPushButton("+ New Session")
         self.new_session_btn.setObjectName("NewSessionBtn")
+        self.new_session_btn.setShortcut("Ctrl+N")
         self.new_session_btn.setCursor(Qt.PointingHandCursor)
         self.new_session_btn.clicked.connect(self.on_new_session_clicked)
         header_layout.addWidget(self.new_session_btn)
