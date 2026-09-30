@@ -12,9 +12,9 @@ import tempfile
 from pathlib import Path
 
 # Ensure UTF-8 stdout encoding on Windows
-if sys.platform == "win32":
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     try:
-        sys.stdout.reconfigure(encoding="utf-8")
+        getattr(sys.stdout, "reconfigure")(encoding="utf-8")
     except Exception:
         pass
 
@@ -124,7 +124,7 @@ def generate_full_voiceover(output_path: str = "full_voiceover.mp3", target_tota
 
             # Load into moviepy AudioFileClip and position
             clip = AudioFileClip(tmp_filename).with_start(target_start)
-            duration_sec = clip.duration
+            duration_sec: float = float(clip.duration) if clip.duration is not None else 0.0
             print(f"  Duration: {duration_sec:.2f}s | Audio Ends: {(target_start + duration_sec):.1f}s")
 
             audio_clips.append(clip)

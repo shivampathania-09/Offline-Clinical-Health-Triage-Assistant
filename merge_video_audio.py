@@ -5,38 +5,38 @@ to the recorded MP4 screen capture from Windows Game Bar (C:\\Users\\<user>\\Vid
 and exports the final merged video: FINAL_DEMO_SUBMISSION.mp4 in the project root directory.
 """
 
+from __future__ import annotations
 import os
 import sys
 import glob
 from pathlib import Path
 
 # Ensure UTF-8 stdout encoding on Windows
-if sys.platform == "win32":
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     try:
-        sys.stdout.reconfigure(encoding="utf-8")
+        getattr(sys.stdout, "reconfigure")(encoding="utf-8")
     except Exception:
         pass
 
 from moviepy import VideoFileClip, AudioFileClip
 
 
-def find_latest_capture(captures_dir: str = None) -> str:
+def find_latest_capture(captures_dir: str | None = None) -> str:
     """Finds the most recently created or modified MP4 file in the Captures directory."""
-    if not captures_dir:
-        captures_dir = str(Path.home() / "Videos" / "Captures")
+    target_dir = captures_dir or str(Path.home() / "Videos" / "Captures")
 
-    if not os.path.exists(captures_dir):
+    if not os.path.exists(target_dir):
         # Fallback to Videos directory
-        captures_dir = str(Path.home() / "Videos")
+        target_dir = str(Path.home() / "Videos")
 
-    mp4_files = glob.glob(os.path.join(captures_dir, "*.mp4"))
+    mp4_files = glob.glob(os.path.join(target_dir, "*.mp4"))
     if not mp4_files:
         # Check subdirectories
-        mp4_files = glob.glob(os.path.join(captures_dir, "**", "*.mp4"), recursive=True)
+        mp4_files = glob.glob(os.path.join(target_dir, "**", "*.mp4"), recursive=True)
 
     if not mp4_files:
         raise FileNotFoundError(
-            f"No .mp4 screen capture files found in '{captures_dir}'.\n"
+            f"No .mp4 screen capture files found in '{target_dir}'.\n"
             f"Please ensure you have completed the recording using record_demo.py or Win + Alt + R."
         )
 
@@ -46,10 +46,10 @@ def find_latest_capture(captures_dir: str = None) -> str:
 
 
 def merge_video_and_audio(
-    video_path: str = None,
+    video_path: str | None = None,
     audio_path: str = "full_voiceover.mp3",
     output_path: str = "FINAL_DEMO_SUBMISSION.mp4"
-):
+) -> str:
     print("=" * 70)
     print("  Post-Processing: Merging Screen Capture with Voiceover Audio")
     print("=" * 70)
@@ -62,27 +62,25 @@ def merge_video_and_audio(
         )
 
     # 2. Resolve Video Path
-    if not video_path:
-        print("\nScanning for the latest screen capture in Videos/Captures...")
-        video_path = find_latest_capture()
+    resolved_video_path = video_path or find_latest_capture()
 
-    print(f"\n[Source Video]: {video_path}")
-    print(f"  File Size: {os.path.getsize(video_path) / (1024 * 1024):.2f} MB")
+    print(f"\n[Source Video]: {resolved_video_path}")
+    print(f"  File Size: {os.path.getsize(resolved_video_path) / (1024 * 1024):.2f} MB")
     print(f"[Source Audio]: {audio_path}")
     print(f"  File Size: {os.path.getsize(audio_path) / 1024:.1f} KB")
 
     # 3. Load Clips
     print("\nLoading media clips into MoviePy...")
-    video_clip = VideoFileClip(video_path)
+    video_clip = VideoFileClip(resolved_video_path)
     audio_clip = AudioFileClip(audio_path)
 
-    v_dur = video_clip.duration
-    a_dur = audio_clip.duration
+    v_dur: float = float(video_clip.duration) if video_clip.duration is not None else 0.0
+    a_dur: float = float(audio_clip.duration) if audio_clip.duration is not None else 0.0
     print(f"  Video Duration: {v_dur:.2f}s | Audio Duration: {a_dur:.2f}s")
 
     # 4. Synchronize Durations
     # If video is slightly longer or shorter, trim to the common boundary
-    target_duration = min(v_dur, a_dur)
+    target_duration: float = min(v_dur, a_dur)
     if abs(v_dur - a_dur) > 0.5:
         print(f"  Aligning media streams to {target_duration:.2f}s...")
         video_clip = video_clip.subclipped(0, target_duration)
@@ -110,12 +108,12 @@ def merge_video_and_audio(
     print("\n" + "=" * 70)
     print("  🎉 FINAL SUBMISSION VIDEO CREATED SUCCESSFULLY!")
     print(f"  Output Path: {os.path.abspath(output_path)}")
-    print(f"  Duration:    {target_duration:.2f}s ({target_duration / 60:.2f} minutes)")
+    print(f"  Duration:    {target_duration:.2f}s ({target_duration / 60.0:.2f} minutes)")
     print(f"  File Size:   {out_size_mb:.2f} MB")
     print("=" * 70)
     return output_path
 
 
 if __name__ == "__main__":
-    v_in = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else None
+    v_in: str | None = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else None
     merge_video_and_audio(video_path=v_in)
