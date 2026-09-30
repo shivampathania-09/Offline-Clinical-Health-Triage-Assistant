@@ -25,7 +25,7 @@ from moviepy import AudioFileClip, CompositeAudioClip
 VOICEOVER_PARTS = [
     {
         "id": 1,
-        "title": "Phase 1: The Healthcare Chasm (0:00 - 0:17)",
+        "title": "Phase 1: The Healthcare Chasm (0:00 - 0:25)",
         "target_start_sec": 1.0,
         "text": (
             "Over 68% of rural clinics face telecommunication blackouts where cloud chatbots fail, "
@@ -36,8 +36,8 @@ VOICEOVER_PARTS = [
     },
     {
         "id": 2,
-        "title": "Phase 2: Zero-Egress Architecture (0:18 - 0:34)",
-        "target_start_sec": 18.0,
+        "title": "Phase 2: Zero-Egress Architecture (0:26 - 0:49)",
+        "target_start_sec": 26.0,
         "text": (
             "Meet the Offline Clinical Health Triage Assistant—an edge-native application running 100% on-device. "
             "Our architecture is safe-by-construction: a sub-millisecond Core Safety Engine evaluates queries with "
@@ -46,8 +46,8 @@ VOICEOVER_PARTS = [
     },
     {
         "id": 3,
-        "title": "Phase 3A: Prompt 1 Emergency Override (0:35 - 0:48)",
-        "target_start_sec": 35.0,
+        "title": "Phase 3A: Prompt 1 Emergency Override (0:49 - 1:06)",
+        "target_start_sec": 49.0,
         "text": (
             "Watch: When a patient presents with acute crushing chest pressure, our safety engine intercepts in less than one millisecond—"
             "bypassing LLM inference to deliver an immediate, life-saving 112 emergency routing card."
@@ -55,8 +55,8 @@ VOICEOVER_PARTS = [
     },
     {
         "id": 4,
-        "title": "Phase 3B: Prompt 2 Bilingual Hindi Query (0:49 - 1:02)",
-        "target_start_sec": 49.0,
+        "title": "Phase 3B: Prompt 2 Bilingual Hindi Query (1:06 - 1:22)",
+        "target_start_sec": 66.5,
         "text": (
             "Clicking New Session, our multilingual pipeline dynamically detects Hindi, rendering crisp Devanagari script natively "
             "without tofu boxes, tagging fever and asking focused duration details on Turn 1."
@@ -64,8 +64,8 @@ VOICEOVER_PARTS = [
     },
     {
         "id": 5,
-        "title": "Phase 3C: Prompts 3 & 4 Multi-Turn & Turn 3 Escalation (1:03 - 1:19)",
-        "target_start_sec": 63.0,
+        "title": "Phase 3C: Prompts 3 & 4 Multi-Turn & Turn 3 Escalation (1:22 - 1:44)",
+        "target_start_sec": 82.5,
         "text": (
             "The patient replies in English; language dynamically switches back with home hydration advice. "
             "On Turn 3, our safe-by-construction guardrail catches persisting clinical uncertainty and automatically "
@@ -74,8 +74,8 @@ VOICEOVER_PARTS = [
     },
     {
         "id": 6,
-        "title": "Phase 3D: Real-Time Telemetry Dashboard (1:20 - 1:34)",
-        "target_start_sec": 80.0,
+        "title": "Phase 3D: Real-Time Telemetry Dashboard (1:44 - 2:02)",
+        "target_start_sec": 104.0,
         "text": (
             "On the right panel, our live telemetry dashboard continuously samples CPU load every 100 milliseconds, "
             "tracking Time-To-First-Token, token speed, and guaranteeing 100% local isolation with zero bytes egressed."
@@ -83,8 +83,8 @@ VOICEOVER_PARTS = [
     },
     {
         "id": 7,
-        "title": "Phase 4: Snapdragon Hexagon NPU Optimization & Conclusion (1:35 - 1:55)",
-        "target_start_sec": 95.0,
+        "title": "Phase 4: Snapdragon Hexagon NPU Optimization & Conclusion (2:02 - 2:28)",
+        "target_start_sec": 123.0,
         "text": (
             "Designed for Snapdragon Hexagon NPU via Qualcomm QNN Execution Provider scaffolding with verified CPU fallback, "
             "our pipeline achieves sub-50ms latency and 70% CPU reduction. "
