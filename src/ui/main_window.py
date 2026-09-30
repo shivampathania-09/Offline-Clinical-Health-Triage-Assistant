@@ -223,7 +223,7 @@ class TriageWorker(QObject):
                 "tokens_sec": round(tokens_per_sec, 1),
                 "peak_cpu": round(peak_cpu, 1),
                 "privacy_status": "100% Local (0 Bytes Egressed)",
-                "npu_mode": "Snapdragon Hexagon NPU Accelerated" if self.npu_accelerated else "CPU Emulation Mode",
+                "npu_mode": "Snapdragon Hexagon NPU Accelerated" if self.npu_accelerated else "CPU Emulation Mode (Snapdragon QNN Architecture Scaffolded)",
                 "detected_lang": turn_result.detected_language.upper(),
                 "current_turn": turn_result.current_turn,
                 "is_completed": turn_result.is_completed
@@ -531,7 +531,7 @@ class MainWindow(QMainWindow):
                 font-weight: 600;
             """)
         else:
-            self.hw_badge.setText("● CPU Emulation Mode")
+            self.hw_badge.setText("● CPU Emulation Mode (Snapdragon QNN Architecture Scaffolded)")
             self.hw_badge.setStyleSheet("""
                 background-color: #451A03;
                 color: #FBBF24;
