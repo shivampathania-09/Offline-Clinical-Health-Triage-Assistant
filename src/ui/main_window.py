@@ -266,9 +266,9 @@ class MainWindow(QMainWindow):
         self.resize(1180, 780)
         self.setMinimumSize(960, 640)
 
-        # 1. Configure System Devanagari Font Stack
+        # 1. Configure System Devanagari Font Stack (Nirmala UI / Mangal are Windows native Devanagari fonts)
         self.base_font = QFont()
-        self.base_font.setFamilies(["Segoe UI", "Noto Sans Devanagari", "Mangal", "Arial", "sans-serif"])
+        self.base_font.setFamilies(["Nirmala UI", "Mangal", "Segoe UI", "Noto Sans Devanagari", "Arial", "sans-serif"])
         self.base_font.setPointSize(10)
         self.setFont(self.base_font)
 
