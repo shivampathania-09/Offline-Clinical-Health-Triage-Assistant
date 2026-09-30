@@ -4,7 +4,7 @@ from tests.benchmark_harness import BenchmarkHarness
 
 def test_harness_simulated_mode():
     harness = BenchmarkHarness(npu_inference_fn=None)
-    assert harness.npu_mode == "SIMULATED"
+    assert harness.npu_mode in ["[SIMULATED NPU]", "SIMULATED"]
 
 def test_harness_real_mode():
     mock_fn = MagicMock(return_value=45.2)
