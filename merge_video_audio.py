@@ -22,26 +22,38 @@ from moviepy import VideoFileClip, AudioFileClip
 
 
 def find_latest_capture(captures_dir: str | None = None) -> str:
-    """Finds the most recently created or modified MP4 file in the Captures directory."""
-    target_dir = captures_dir or str(Path.home() / "Videos" / "Captures")
+    """Finds the most recently created or modified MP4 file across common recording directories."""
+    candidate_dirs = [
+        str(Path.home() / "Videos" / "Captures"),          # Xbox Game Bar default
+        str(Path.home() / "Videos" / "Screen Recordings"), # Windows 11 Snipping Tool default
+        str(Path.home() / "Videos"),                       # OBS / Loom default
+        str(Path.home() / "Desktop"),
+        str(Path.cwd()),
+    ]
+    if captures_dir:
+        candidate_dirs.insert(0, captures_dir)
 
-    if not os.path.exists(target_dir):
-        # Fallback to Videos directory
-        target_dir = str(Path.home() / "Videos")
+    all_mp4s: list[str] = []
+    for d in candidate_dirs:
+        if os.path.exists(d):
+            files = glob.glob(os.path.join(d, "*.mp4"))
+            # Exclude previously generated output files
+            files = [
+                f for f in files
+                if not f.endswith("FINAL_DEMO_SUBMISSION.mp4")
+                and not f.endswith("test_screen.mp4")
+            ]
+            all_mp4s.extend(files)
 
-    mp4_files = glob.glob(os.path.join(target_dir, "*.mp4"))
-    if not mp4_files:
-        # Check subdirectories
-        mp4_files = glob.glob(os.path.join(target_dir, "**", "*.mp4"), recursive=True)
-
-    if not mp4_files:
+    if not all_mp4s:
         raise FileNotFoundError(
-            f"No .mp4 screen capture files found in '{target_dir}'.\n"
-            f"Please ensure you have completed the recording using record_demo.py or Win + Alt + R."
+            "No .mp4 screen capture files found in Captures, Screen Recordings, or Videos.\n"
+            "Please ensure you have recorded a video (via Win+Alt+R, Snipping Tool Win+Shift+R, or OBS).\n"
+            "You can also pass your recording path directly: python merge_video_audio.py <path_to_video.mp4>"
         )
 
     # Sort by modification time descending
-    latest_file = max(mp4_files, key=os.path.getmtime)
+    latest_file = max(all_mp4s, key=os.path.getmtime)
     return latest_file
 
 

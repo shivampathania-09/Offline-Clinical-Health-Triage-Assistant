@@ -106,37 +106,78 @@ def trigger_npu_toggle():
     time.sleep(0.3)
 
 
-def activate_app_window():
-    """Brings the Offline Clinical Health Triage Assistant window to the foreground."""
+def activate_app_window() -> bool:
+    """Brings the Offline Clinical Health Triage Assistant window to the foreground with thread input attachment."""
     hwnd = user32.FindWindowW(None, "Offline Clinical Health Triage Assistant")
+    if not hwnd:
+        # Search all top-level windows for partial title match
+        matched_hwnd = 0
+
+        def enum_cb(h, _):
+            nonlocal matched_hwnd
+            length = user32.GetWindowTextLengthW(h)
+            if length > 0:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(h, buf, length + 1)
+                if "Offline Clinical Health Triage Assistant" in buf.value:
+                    matched_hwnd = h
+                    return False
+            return True
+
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_void_p)
+        user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+        hwnd = matched_hwnd
+
     if hwnd:
-        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-        user32.SetForegroundWindow(hwnd)
+        fore_hwnd = user32.GetForegroundWindow()
+        fore_thread = user32.GetWindowThreadProcessId(fore_hwnd, None)
+        target_thread = user32.GetWindowThreadProcessId(hwnd, None)
+        if fore_thread != target_thread and fore_thread != 0:
+            user32.AttachThreadInput(fore_thread, target_thread, True)
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            user32.SetForegroundWindow(hwnd)
+            user32.SetFocus(hwnd)
+            user32.AttachThreadInput(fore_thread, target_thread, False)
+        else:
+            user32.ShowWindow(hwnd, 9)
+            user32.SetForegroundWindow(hwnd)
         time.sleep(0.5)
         return True
     return False
 
 
 def run_demo_recording():
+    is_manual = "--manual" in sys.argv or "--no-hotkey" in sys.argv
     print("=" * 70)
     print("  Offline Clinical Health Triage Assistant — Automated Demo Recorder")
     print("  Snapdragon AI Challenge 2026 (2-Minute Timed Pitch Walkthrough)")
     print("=" * 70)
-    
+    print("\n[Screen Recording Method]")
+    print("  • Automatic: Triggers Win + Alt + R (Windows Game Bar)")
+    print("  • Manual: Pass '--manual' if recording with Snipping Tool (Win+Shift+R), OBS, or Loom")
+    print("  • If Windows Game Bar says 'Recording isn't working':")
+    print("    Press Win + G while the app is open -> Settings -> General -> check 'Remember this is a game'.\n")
+
     # 0. Focus App Window
-    print("\n[Step 0] Activating application window...")
+    print("[Step 0] Activating application window...")
     if not activate_app_window():
         print("Notice: Please ensure '.venv\\Scripts\\python main.py' is open and visible on screen.")
     time.sleep(1.0)
 
-    # 1. Start Screen Recorder (Win + Alt + R)
-    print("\n[Step 1] Starting screen recording in 3 seconds (Win + Alt + R)...")
-    for i in range(3, 0, -1):
-        print(f"  {i}...")
-        time.sleep(1.0)
-    
-    trigger_gamebar_recording()
-    print("  >>> Screen recording started!")
+    # 1. Start Screen Recorder
+    if not is_manual:
+        print("\n[Step 1] Starting screen recording in 3 seconds (Win + Alt + R)...")
+        for i in range(3, 0, -1):
+            print(f"  {i}...")
+            time.sleep(1.0)
+        trigger_gamebar_recording()
+        print("  >>> Screen recording triggered via Win + Alt + R!")
+    else:
+        print("\n[Step 1] Manual recording mode active. Starting autopilot interaction in 3 seconds...")
+        for i in range(3, 0, -1):
+            print(f"  {i}...")
+            time.sleep(1.0)
+        print("  >>> Autopilot interaction starting now!")
     
     # Narrate intro buffer (Phases 1 & 2: Problem & Architecture, 0:00 - 0:49)
     print("\n[Timeline 0:00 - 0:49] Voiceover: Rural clinic connectivity & 0-egress architecture...")
@@ -215,14 +256,17 @@ def run_demo_recording():
     print("  >>> Hardware Status updated to: '● Snapdragon Hexagon NPU Accelerated' (Emerald Green).")
     time.sleep(26.5)
 
-    # 8. Stop Screen Recorder (Win + Alt + R)
-    print("\n[Timeline 2:28] Stopping screen recorder (Win + Alt + R)...")
-    trigger_gamebar_recording()
+    # 8. Stop Screen Recorder
+    if not is_manual:
+        print("\n[Timeline 2:28] Stopping screen recorder (Win + Alt + R)...")
+        trigger_gamebar_recording()
+    else:
+        print("\n[Timeline 2:28] Autopilot interaction completed! Please stop your screen recorder now.")
     time.sleep(1.0)
 
     print("\n" + "=" * 70)
     print("  ✅ Demo recording workflow completed successfully!")
-    print(f"  Saved video path: {Path.home() / 'Videos' / 'Captures'}")
+    print(f"  Next Step: Run '.venv\\Scripts\\python merge_video_audio.py' to produce FINAL_DEMO_SUBMISSION.mp4")
     print("=" * 70)
 
 
