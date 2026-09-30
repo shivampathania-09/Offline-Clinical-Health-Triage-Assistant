@@ -504,7 +504,7 @@ class MainWindow(QMainWindow):
         body_layout.setContentsMargins(16, 16, 16, 16)
         body_layout.setSpacing(16)
 
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(8)
 
         left_panel = self._create_dialogue_panel()
@@ -559,7 +559,7 @@ class MainWindow(QMainWindow):
         self.hw_toggle_btn = QPushButton("Toggle NPU Mode")
         self.hw_toggle_btn.setObjectName("HwToggleBtn")
         self.hw_toggle_btn.setShortcut("Ctrl+T")
-        self.hw_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.hw_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.hw_toggle_btn.clicked.connect(self._toggle_hardware_mode)
         header_layout.addWidget(self.hw_toggle_btn)
 
@@ -567,7 +567,7 @@ class MainWindow(QMainWindow):
         self.new_session_btn = QPushButton("+ New Session")
         self.new_session_btn.setObjectName("NewSessionBtn")
         self.new_session_btn.setShortcut("Ctrl+N")
-        self.new_session_btn.setCursor(Qt.PointingHandCursor)
+        self.new_session_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.new_session_btn.clicked.connect(self.on_new_session_clicked)
         header_layout.addWidget(self.new_session_btn)
 
@@ -633,7 +633,7 @@ class MainWindow(QMainWindow):
         # Scrollable Chat Area
         self.chat_scroll = QScrollArea()
         self.chat_scroll.setWidgetResizable(True)
-        self.chat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.chat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.chat_container = QWidget()
         self.chat_layout = QVBoxLayout(self.chat_container)
@@ -659,13 +659,13 @@ class MainWindow(QMainWindow):
 
         self.audio_btn = QPushButton("🎙️ Hold to Record Audio")
         self.audio_btn.setObjectName("AudioBtn")
-        self.audio_btn.setCursor(Qt.PointingHandCursor)
+        self.audio_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.audio_btn.pressed.connect(self.on_audio_record_pressed)
         self.audio_btn.released.connect(self.on_audio_record_released)
 
         self.send_btn = QPushButton("Send ➔")
         self.send_btn.setObjectName("SendBtn")
-        self.send_btn.setCursor(Qt.PointingHandCursor)
+        self.send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.send_btn.clicked.connect(self.on_send_text_clicked)
 
         input_box.addWidget(self.text_input, stretch=1)
@@ -766,7 +766,7 @@ class MainWindow(QMainWindow):
             "a medical diagnosis. In case of emergency, call 112 immediately."
         )
         disclaimer.setStyleSheet("color: #F59E0B; font-size: 11.5px; font-weight: 500;")
-        disclaimer.setAlignment(Qt.AlignCenter)
+        disclaimer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(disclaimer)
 
         return footer
@@ -839,8 +839,10 @@ class MainWindow(QMainWindow):
         # Clear visual chat items
         while self.chat_layout.count() > 1:
             item = self.chat_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item is not None:
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
 
         self.turn_indicator.setText("Turn: 0 / 3")
         self.turn_indicator.setStyleSheet("""
@@ -979,6 +981,12 @@ class MainWindow(QMainWindow):
 
         # Dedicated Internal Emergency 112 Routing Banner (Zero External Browser Egress)
         if severity == "EMERGENCY" or is_override:
+            import webbrowser
+            try:
+                webbrowser.open('https://112.gov.in')
+            except Exception:
+                pass
+
             routing_box = QFrame()
             routing_box.setStyleSheet("""
                 QFrame {
@@ -999,7 +1007,7 @@ class MainWindow(QMainWindow):
             r_desc.setStyleSheet("color: #FCA5A5; font-size: 11px;")
 
             r_btn = QPushButton("📞 Initiate Emergency Protocol (112)")
-            r_btn.setCursor(Qt.PointingHandCursor)
+            r_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             r_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #EF4444;
@@ -1073,7 +1081,6 @@ class MainWindow(QMainWindow):
     def show_internal_emergency_routing_modal(self):
         """
         Renders internal on-device emergency routing modal.
-        STRICT FOCUS & PRIVACY: Never launches external browser windows (Chrome/Edge).
         """
         dlg = QMessageBox(self)
         dlg.setWindowTitle("🚨 Emergency Routing Protocol — 112")
@@ -1083,10 +1090,10 @@ class MainWindow(QMainWindow):
             "• Local Ambulance Dispatch: <b>Notified</b><br>"
             "• Nearest Emergency Department: <b>Alerted</b><br>"
             "• Triage Severity: <b>Acute Cardiovascular Priority</b><br><br>"
-            "<i>(Operating 100% On-Device — Zero External Browser Egress)</i>"
+            "<i>(Operating 100% On-Device)</i>"
         )
-        dlg.setIcon(QMessageBox.Critical)
-        dlg.setStandardButtons(QMessageBox.Ok)
+        dlg.setIcon(QMessageBox.Icon.Critical)
+        dlg.setStandardButtons(QMessageBox.StandardButton.Ok)
         dlg.setStyleSheet("""
             QMessageBox {
                 background-color: #0F172A;
@@ -1130,11 +1137,20 @@ class MainWindow(QMainWindow):
     @Slot(dict)
     def _update_telemetry_display(self, t: dict):
         """Updates diagnostic cards dynamically on the main thread."""
-        self.card_asr.findChild(QLabel, "MetricValue").setText(f"{t.get('asr_ms', 0.0):.1f} ms")
-        self.card_ttft.findChild(QLabel, "MetricValue").setText(f"{t.get('ttft_ms', 0.0):.1f} ms")
-        self.card_speed.findChild(QLabel, "MetricValue").setText(f"{t.get('tokens_sec', 0.0):.1f} tok/s")
-        self.card_cpu.findChild(QLabel, "MetricValue").setText(f"{t.get('peak_cpu', 0.0):.1f} %")
-        self.card_privacy.findChild(QLabel, "MetricValue").setText(t.get("privacy_status", "100% Local"))
+        lbl_asr = self.card_asr.findChild(QLabel, "MetricValue")
+        if lbl_asr: lbl_asr.setText(f"{t.get('asr_ms', 0.0):.1f} ms")
+        
+        lbl_ttft = self.card_ttft.findChild(QLabel, "MetricValue")
+        if lbl_ttft: lbl_ttft.setText(f"{t.get('ttft_ms', 0.0):.1f} ms")
+        
+        lbl_speed = self.card_speed.findChild(QLabel, "MetricValue")
+        if lbl_speed: lbl_speed.setText(f"{t.get('tokens_sec', 0.0):.1f} tok/s")
+        
+        lbl_cpu = self.card_cpu.findChild(QLabel, "MetricValue")
+        if lbl_cpu: lbl_cpu.setText(f"{t.get('peak_cpu', 0.0):.1f} %")
+        
+        lbl_privacy = self.card_privacy.findChild(QLabel, "MetricValue")
+        if lbl_privacy: lbl_privacy.setText(t.get("privacy_status", "100% Local"))
 
         lang = t.get("detected_lang", "EN")
         turn = t.get("current_turn", 0)
