@@ -62,17 +62,17 @@ def test_complete_demo_recording_workflow(main_window):
     # Step 0: Hardware Status Inspection & Toggle
     # --------------------------------------------------------------------------
     assert "CPU Emulation Mode" in win.hw_badge.text()
-    assert win.worker.npu_accelerated is False
+    assert not win.worker.npu_accelerated
 
     # Toggle to NPU Mode
     win._toggle_hardware_mode()
     assert "Snapdragon Hexagon NPU Accelerated" in win.hw_badge.text()
-    assert win.worker.npu_accelerated is True
+    assert win.worker.npu_accelerated
 
     # Toggle back to CPU Mode for recording baseline
     win._toggle_hardware_mode()
     assert "CPU Emulation Mode" in win.hw_badge.text()
-    assert win.worker.npu_accelerated is False
+    assert not win.worker.npu_accelerated
 
     # --------------------------------------------------------------------------
     # Prompt 1: Acute Emergency Safety Override Trigger
@@ -82,7 +82,7 @@ def test_complete_demo_recording_workflow(main_window):
     submit_user_query(win, p1)
 
     # Check emergency safety override result
-    assert win.session_manager.is_finished is True
+    assert win.session_manager.is_finished
     last_card = win.chat_layout.itemAt(win.chat_layout.count() - 2).layout().itemAt(0).widget()
     card_text = " ".join([lbl.text() for lbl in last_card.findChildren(QLabel)])
     assert "EMERGENCY" in card_text
@@ -104,7 +104,7 @@ def test_complete_demo_recording_workflow(main_window):
     win.new_session_btn.click()
     QTest.qWait(50)
     assert win.session_manager.current_turn == 0
-    assert win.session_manager.is_finished is False
+    assert not win.session_manager.is_finished
     assert "Turn: 0 / 3" in win.turn_indicator.text()
 
     # --------------------------------------------------------------------------
@@ -149,7 +149,7 @@ def test_complete_demo_recording_workflow(main_window):
     submit_user_query(win, p4)
 
     assert win.session_manager.current_turn == 3
-    assert win.session_manager.is_finished is True
+    assert win.session_manager.is_finished
     assert "Turn: 3 / 3" in win.turn_indicator.text()
     assert "Completed" in win.diag_status.text()
 
