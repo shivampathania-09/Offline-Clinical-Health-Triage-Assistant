@@ -132,13 +132,13 @@ def run_demo_recording():
     trigger_gamebar_recording()
     print("  >>> Screen recording started!")
     
-    # Narrate intro buffer (0:00 - 0:15)
-    print("\n[Timeline 0:00 - 0:15] Voiceover: Rural clinic connectivity & 0-egress architecture...")
-    time.sleep(12.0)
+    # Narrate intro buffer (Phases 1 & 2: Problem & Architecture, 0:00 - 0:49)
+    print("\n[Timeline 0:00 - 0:49] Voiceover: Rural clinic connectivity & 0-egress architecture...")
+    time.sleep(48.0)
 
-    # 2. Prompt 1: Emergency Override (0:15 - 0:30)
+    # 2. Prompt 1: Emergency Override (Phase 3A: 0:49 - 1:06)
     p1 = "I am experiencing severe crushing chest pressure and shortness of breath"
-    print(f"\n[Timeline 0:15 - 0:30] Submitting Prompt 1 (Emergency Override)...")
+    print(f"\n[Timeline 0:49 - 1:06] Submitting Prompt 1 (Emergency Override)...")
     print(f"  Input: \"{p1}\"")
     paste_text(p1)
     if HAS_PYAUTOGUI:
@@ -146,12 +146,12 @@ def run_demo_recording():
     else:
         native_press_enter()
     print("  >>> Intercepted in < 1 ms! Showing Red EMERGENCY Card with 112 routing.")
-    time.sleep(12.0)
+    time.sleep(16.0)
 
-    # 3. Prompt 2: Turn 1 Hindi Clinical Query (0:30 - 0:50)
-    print("\n[Timeline 0:30 - 0:50] Resetting session (Ctrl+N) & Submitting Prompt 2 (Hindi)...")
+    # 3. Prompt 2: Turn 1 Hindi Clinical Query (Phase 3B: 1:06 - 1:22)
+    print("\n[Timeline 1:06 - 1:22] Resetting session (Ctrl+N) & Submitting Prompt 2 (Hindi)...")
     trigger_new_session()
-    time.sleep(1.0)
+    time.sleep(1.5)
 
     p2 = "मुझे 2 दिन से तेज बुखार है"
     print(f"  Input: \"{p2}\"")
@@ -161,11 +161,11 @@ def run_demo_recording():
     else:
         native_press_enter()
     print("  >>> Rendered Hindi Devanagari script cleanly with 'बुखार (Fever)' tag.")
-    time.sleep(12.0)
+    time.sleep(15.0)
 
-    # 4. Prompt 3: Turn 2 English Follow-Up (0:50 - 1:10)
+    # 4. Prompt 3: Turn 2 English Follow-Up (Phase 3C-1: 1:22 - 1:31)
     p3 = "It started yesterday morning and I also have a mild headache"
-    print(f"\n[Timeline 0:50 - 1:10] Submitting Prompt 3 (English Follow-Up)...")
+    print(f"\n[Timeline 1:22 - 1:31] Submitting Prompt 3 (English Follow-Up)...")
     print(f"  Input: \"{p3}\"")
     paste_text(p3)
     if HAS_PYAUTOGUI:
@@ -173,11 +173,11 @@ def run_demo_recording():
     else:
         native_press_enter()
     print("  >>> Language switched back to English with home-care hydration advice.")
-    time.sleep(12.0)
+    time.sleep(8.0)
 
-    # 5. Prompt 4: Turn 3 Safe-By-Construction Escalation (1:10 - 1:30)
+    # 5. Prompt 4: Turn 3 Safe-By-Construction Escalation (Phase 3C-2: 1:31 - 1:44)
     p4 = "I am not sure if there are other symptoms, I feel very weak"
-    print(f"\n[Timeline 1:10 - 1:30] Submitting Prompt 4 (Turn 3 Escalation)...")
+    print(f"\n[Timeline 1:31 - 1:44] Submitting Prompt 4 (Turn 3 Escalation)...")
     print(f"  Input: \"{p4}\"")
     paste_text(p4)
     if HAS_PYAUTOGUI:
@@ -185,17 +185,20 @@ def run_demo_recording():
     else:
         native_press_enter()
     print("  >>> Turn 3 completed. Uncertainty auto-escalated from MILD to MODERATE (Yellow Badge).")
-    time.sleep(12.0)
+    time.sleep(13.0)
 
-    # 6. Telemetry Inspection & NPU Toggle (1:30 - 1:55)
-    print("\n[Timeline 1:30 - 1:55] Inspecting Telemetry Dashboard & Toggling NPU Mode (Ctrl+T)...")
-    time.sleep(4.0)
+    # 6. Telemetry Inspection (Phase 3D: 1:44 - 2:02)
+    print("\n[Timeline 1:44 - 2:02] Inspecting Live Telemetry Dashboard...")
+    time.sleep(18.0)
+
+    # 7. NPU Mode Toggle & Closing (Phase 4: 2:02 - 2:28)
+    print("\n[Timeline 2:02 - 2:28] Toggling NPU Mode (Ctrl+T) & Concluding Pitch...")
     trigger_npu_toggle()
     print("  >>> Hardware Status updated to: '● Snapdragon Hexagon NPU Accelerated' (Emerald Green).")
-    time.sleep(12.0)
+    time.sleep(26.0)
 
-    # 7. Stop Screen Recorder (Win + Alt + R)
-    print("\n[Timeline 1:55 - 2:00] Stopping screen recorder (Win + Alt + R)...")
+    # 8. Stop Screen Recorder (Win + Alt + R)
+    print("\n[Timeline 2:28] Stopping screen recorder (Win + Alt + R)...")
     trigger_gamebar_recording()
     time.sleep(1.0)
 
