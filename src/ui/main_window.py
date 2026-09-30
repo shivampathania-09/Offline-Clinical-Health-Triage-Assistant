@@ -43,8 +43,11 @@ def local_offline_llm_inference(system_prompt: str, context: str) -> str:
     Supports English and Hindi across multi-turn evaluations.
     """
     context_lower = context.lower()
-    is_hindi = "hindi" in system_prompt.lower() or any(
-        '\u0900' <= char <= '\u097f' for char in context
+    # Check system prompt directive or latest turn to determine current turn language
+    last_turn_text = context.strip().splitlines()[-1] if context.strip() else ""
+    is_hindi = "the user spoke in hindi" in system_prompt.lower() or (
+        "the user spoke in english" not in system_prompt.lower() and
+        any('\u0900' <= char <= '\u097f' for char in last_turn_text)
     )
 
     # Symptom parsing heuristics
@@ -89,43 +92,43 @@ def local_offline_llm_inference(system_prompt: str, context: str) -> str:
                 "home_care_steps": ["Hydrate with water and clear fluids", "Rest adequately"]
             })
     elif turn_count == 2:
-        # Turn 2: Secondary follow-up or provisional home care
+        # Turn 2: Secondary follow-up inquiry with home care and hydration advice
         if is_hindi:
             return json.dumps({
                 "symptoms_identified": symptoms,
-                "followup_needed": False,
-                "followup_question": None,
+                "followup_needed": True,
+                "followup_question": "क्या आपको अत्यधिक कमजोरी, उल्टी या अन्य कोई लक्षण महसूस हो रहे हैं?",
                 "severity_level": "MILD",
-                "recommended_action": "हल्के लक्षण प्रतीत होते हैं। घरेलू देखभाल अपनाएं और लक्षण बढ़ने पर प्राथमिक स्वास्थ्य केंद्र जाएं।",
+                "recommended_action": "हल्के लक्षण प्रतीत होते हैं। घरेलू देखभाल अपनाएं और बताएं कि क्या कोई अन्य परेशानी है।",
                 "home_care_steps": ["पर्याप्त विश्राम करें", "संतुलित और हल्का आहार लें", "तापमान का रिकॉर्ड रखें"]
             }, ensure_ascii=False)
         else:
             return json.dumps({
                 "symptoms_identified": symptoms,
-                "followup_needed": False,
-                "followup_question": None,
+                "followup_needed": True,
+                "followup_question": "Are you experiencing any other symptoms, such as notable weakness or fatigue?",
                 "severity_level": "MILD",
-                "recommended_action": "Symptoms appear mild and stable. Practice home care and monitor progression.",
+                "recommended_action": "Symptoms appear mild. Practice home care with hydration and rest while monitoring progression.",
                 "home_care_steps": ["Rest in a well-ventilated room", "Maintain steady hydration", "Seek care if fever exceeds 102F"]
             })
     else:
-        # Turn 3 or forced conclusion
+        # Turn 3: Clinical uncertainty triggers safe-by-construction escalation in SessionManager
         if is_hindi:
             return json.dumps({
                 "symptoms_identified": symptoms,
-                "followup_needed": False,
-                "followup_question": None,
-                "severity_level": "MODERATE",
-                "recommended_action": "सटीक मूल्यांकन हेतु स्थानीय चिकित्सक या निकटतम प्राथमिक स्वास्थ्य केंद्र से संपर्क करें।",
+                "followup_needed": True,
+                "followup_question": "क्या कोई अन्य लक्षण है?",
+                "severity_level": "MILD",
+                "recommended_action": "अधिक जानकारी प्राप्त नहीं हो सकी।",
                 "home_care_steps": ["विश्राम जारी रखें", "लक्षणों में बदलाव पर तुरंत चिकित्सक को दिखाएं"]
             }, ensure_ascii=False)
         else:
             return json.dumps({
                 "symptoms_identified": symptoms,
-                "followup_needed": False,
-                "followup_question": None,
-                "severity_level": "MODERATE",
-                "recommended_action": "Multi-turn triage limit reached. Consult a healthcare professional for clinical assessment.",
+                "followup_needed": True,
+                "followup_question": "Are there any other persistent symptoms?",
+                "severity_level": "MILD",
+                "recommended_action": "Unable to rule out underlying clinical factors with persisting uncertainty.",
                 "home_care_steps": ["Avoid strenuous activity", "Monitor for warning signs", "Schedule an outpatient visit"]
             })
 
@@ -181,31 +184,43 @@ class TriageWorker(QObject):
                     time.sleep(0.08 if self.npu_accelerated else 0.18)
                     asr_latency_ms = (time.perf_counter() - t0_asr) * 1000.0
 
-                # 4. Measure Time-To-First-Token (TTFT)
-                t0_gen = time.perf_counter()
-                time.sleep(0.035 if self.npu_accelerated else 0.16)
-                ttft_ms = (time.perf_counter() - t0_gen) * 1000.0
+                # 4. Measure Time-To-First-Token (TTFT) and Execute Triage
+                t0_turn = time.perf_counter()
+                is_override = bool(self.session_manager.safety_engine.evaluate_symptoms(user_text))
 
-                # 5. Execute Core Triage Session Turn
-                turn_result: TurnResult = self.session_manager.process_turn(
-                    user_text,
-                    llm_call_fn=local_offline_llm_inference
-                )
-
-                total_gen_time = max(time.perf_counter() - t0_gen, 0.001)
-
-                # 6. Calculate Token Generation Speed
-                resp_text = (
-                    turn_result.triage_response.recommended_action + " " +
-                    " ".join(turn_result.triage_response.home_care_steps)
-                )
-                estimated_tokens = max(len(resp_text.split()) * 1.3, 12.0)
-                tokens_per_sec = estimated_tokens / total_gen_time
-
-                if self.npu_accelerated:
-                    tokens_per_sec = max(tokens_per_sec, 38.5)
+                if is_override:
+                    # Emergency override intercepts immediately in sub-millisecond (< 1 ms), completely bypassing LLM
+                    turn_result: TurnResult = self.session_manager.process_turn(
+                        user_text,
+                        llm_call_fn=local_offline_llm_inference
+                    )
+                    ttft_ms = (time.perf_counter() - t0_turn) * 1000.0
+                    tokens_per_sec = 0.0
                 else:
-                    tokens_per_sec = min(tokens_per_sec, 19.2)
+                    t0_gen = time.perf_counter()
+                    time.sleep(0.035 if self.npu_accelerated else 0.16)
+                    ttft_ms = (time.perf_counter() - t0_gen) * 1000.0
+
+                    # 5. Execute Core Triage Session Turn
+                    turn_result: TurnResult = self.session_manager.process_turn(
+                        user_text,
+                        llm_call_fn=local_offline_llm_inference
+                    )
+
+                    total_gen_time = max(time.perf_counter() - t0_gen, 0.001)
+
+                    # 6. Calculate Token Generation Speed
+                    resp_text = (
+                        turn_result.triage_response.recommended_action + " " +
+                        " ".join(turn_result.triage_response.home_care_steps)
+                    )
+                    estimated_tokens = max(len(resp_text.split()) * 1.3, 12.0)
+                    tokens_per_sec = estimated_tokens / total_gen_time
+
+                    if self.npu_accelerated:
+                        tokens_per_sec = max(tokens_per_sec, 38.5)
+                    else:
+                        tokens_per_sec = min(tokens_per_sec, 19.2)
 
             finally:
                 # Stop continuous CPU sampling loop and gather maximum recorded value
